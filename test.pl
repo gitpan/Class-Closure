@@ -10,8 +10,8 @@ sub CLASS {
     destroy { $foodestr++ };
     
     my $a = 1;              # Private
-    has(b => my $b) = 2;    # Read Only
-    public(c => my $c) = 3; # Er, yep, public
+    has(my $b) = 2;         # Read Only
+    public(my $c) = 3;      # Er, yep, public
                             # Magic accessor.
     accessor 'd', set => sub { $b = $_[1] },
                   get => sub { $c };
@@ -39,7 +39,7 @@ sub CLASS {
     extends 'Foo';
     extends 'Baz';
 
-    has b => my $b;
+    has my $b;
 
     method BUILD => sub { $b = 13; };
     method FALLBACK => sub { 69 };

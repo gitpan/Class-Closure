@@ -6,6 +6,8 @@ no warnings;
 use Exporter;
 use Carp;
 use Symbol ();
+use PadWalker qw{peek_sub};
+use Devel::Caller qw{caller_cv};
 
 our @ISA = qw(Exporter);
 
@@ -19,7 +21,7 @@ our @EXPORT = qw{
     destroy
 };
 
-our $VERSION = '0.10';
+our $VERSION = '0.20';
 
 my @SCAN;
 our $VTABLE;
@@ -107,14 +109,27 @@ sub _make_package {
 }
 }
 
-sub has($\$) : lvalue {
-    my ($name, $var) = @_;
+sub _find_name {
+    my ($var, $code) = @_;
+    my %names = reverse %{peek_sub($code)};
+    my $name = $names{$var} || croak "Couldn't find lexical name for $var";
+    $name =~ s/^[\$\@%]//;
+    $name;
+}
+
+sub has(\$) : lvalue {
+    my ($var) = @_;
+    
+    my $name = _find_name $var, caller_cv(1);
+    
     *{"$PACKAGE\::$name"} = sub ($) { $$var };
     $$var;
 }
 
-sub public($\$) : lvalue {
-    my ($name, $var) = @_;
+sub public(\$) : lvalue {
+    my ($var) = @_;
+
+    my $name = _find_name $var, caller_cv(1);
     eval <<EOC;
         package $PACKAGE;
         sub $name (\$) : lvalue { \$\$var }
@@ -214,9 +229,9 @@ Class::Closure - Encapsulated, declarative class style
         
         my $hungry;                 # private
         
-        has face => my $face;       # read-only
+        has my $face;               # read-only
         
-        public leash => my $leash;  # public
+        public my $leash;           # public
         
         accessor 'food',            # magical variable-like function
             get => sub { 'None' },
@@ -228,7 +243,7 @@ Class::Closure - Encapsulated, declarative class style
 
         destroy { print "Short is the life of a dog" };  # destructor
 
-        method AUTOLOAD => sub { print "Huh?" };  # AUTOLOAD is allowed, too
+        method FALLBACK => sub { print "Handling $AUTOLOAD" };
     }
 
     my $fido = Dog->new;   # "A new dog is born"
@@ -238,39 +253,36 @@ Class::Closure - Encapsulated, declarative class style
 
 =head1 DESCRIPTION
 
-Class::Closure is a package that makes creating Perl classes less 
+Class::Closure is a package that makes creating Perl classes less
 cumbersome. You can think of it as a more featureful Class::Struct.
 
-To declare a class using Class::Closure, enter a new package, use 
-Class::Closure, and define a sub called CLASS.  Inside this sub lie
-the declarations for the attributes and methods (and subclasses)
-for this class.
+To declare a class using Class::Closure, enter a new package, use
+Class::Closure, and define a sub called CLASS.  Inside this sub will lie
+the declarations for the attributes and methods (and subclasses) for
+this class.
 
 =head2 Variables
 
-To declare variables, you mark them as lexicals within the sub.  You may
-prefix them with C<has> and a name to make them read-only or C<public>
-and a name to make them fully read-write public.
+To declare variables, mark them as lexicals within the sub.  You may prefix
+them with C<has> to make them read-only or C<public> to make them fully
+read-write public.
 
     sub CLASS {
         my $x;             # private
-        has y => my $y;    # read-only
-        public z => my $z; # public
+        has my $y;         # read-only
+        public my $z;      # public
     }
 
-It's not necessary that their "external" name (the one before the C<< =>
->>) be the same as the variable's name, but it is recommended.
-Presently only scalars are handled by C<has> and C<public>; you have to
-define an L<accessor|/Accessors> to specify the semantics you want.
+As of the moment, C<has> and C<public> only support scalar variables. 
 
 You can give the variables a default value by assigning to the whole
-declaration.  For simple private variables this is easy, for read-only
+declaration.  For simple private variables this is easy; for read-only
 and public variables, it requires extra parentheses:
 
     sub CLASS {
-        my $x = 1;
-        has(y => my $y) = 2;
-        public(z => my $z) = 3;
+        my $x         = 1;
+        has(my $y)    = 2;
+        public(my $z) = 3;
     }
 
 To use these variables within the class, use their plain lexical name
@@ -310,10 +322,10 @@ call functions on yourself, though.
 
 =head2 Accessors
 
-Sometimes a change of interface goes from using a public variable to a function
-with extra behavior.  Some would say that's why you never make a member
-variable public.  I disagree, since you can just fake one with the C<accessor>
-keyword:
+Sometimes a change of interface goes from using a public variable to a
+function with extra behavior.  Some would say that's why you never make
+a member variable public.  I disagree, since you can just fake one with
+the C<accessor> keyword:
 
     sub CLASS {
         accessor 'number',
@@ -367,23 +379,25 @@ current sub is still even in C<$AUTOLOAD>).
 If you really want to get scary power out of this module, you have to
 understand how it works. 
 
-The C<CLASS> sub that you defined in your package is actually called every time
-an object is created.  That's right, so there's no need for a C<BUILD> at all
-(but it makes things look cleaner).  Class::Closure exports each one of these
-"keywords" into your namespace, and they are used right on the spot to
-construct the object each time.
+The C<CLASS> sub that you defined in your package is actually called
+every time an object is created.  That's right, so there's no need for a
+C<BUILD> at all (but it makes things look cleaner).  Class::Closure
+exports each one of these "keywords" into your namespace, and they are
+used right on the spot to construct the object each time.
 
-This way each object's member hash is actually a lexical scratchpad, and it
-keeps track of where it is, so you don't have to reference C<$self> all the
-time.  It has the added plus that each object in an inheritance heirarchy has
-it's own scratchpad, so you don't get variable name conflicts.
+Each object's member hash is actually a lexical scratchpad, and it keeps
+track of where it is, so you don't have to reference C<$self> all the
+time.  It has the added plus that each object in an inheritance
+heirarchy has it's own scratchpad, so you don't get variable name
+conflicts.
 
-In more detail, when you call new on your package, it derives a new anonymous
-package for only that object.  Then when you use C<method> (or C<has> or
-C<public> or C<attribute>, which are really just wrappers around the same
-thing), it installs the sub you give into the symbol table position.  These
-closure's aren't "cloned", but just referenced, so this doesn't take up the
-horrible amount of memory you might be thinking it does.
+In more detail, when you call C<new> on your package, it derives a new
+anonymous package for only that object.  Then when you use C<method> (or
+C<has> or C<public> or C<attribute>, which are really just wrappers
+around the same thing), it installs the sub you give into that symbol
+table position.  These closure's aren't "cloned", but just referenced,
+so this doesn't take up the horrible amount of memory you might be
+thinking it does.
 
 Then when all references to the object disappear, it uses L<Symbol>'s
 C<delete_package> to clean out the anonymous package and free memory (and more
@@ -412,16 +426,21 @@ little easier to read.  There's all kinds of other fun stuff you can do.
 =head2 Technical Notes / Bugs / Caveats / Etc.
 
 The benchmarks say that Class::Closure has 50% less overhead than the
-traditional object model.  Yes, that's right, Class::Closure, in addition to
-being super-cool, encapsulated, and easy to read, is I<faster> than what you'd
-get if you did it the traditional way!  It surprised me too.  On the other
-hand, you sacrifice quite a lot of object construction time for this trade-off.
+traditional object model.  Yes, that's right, Class::Closure, in
+addition to being super-cool, encapsulated, and easy to read, is
+I<faster> than what you'd get if you did it the traditional way!  It
+surprised me too.  For this you trade object construction time and some
+memory.
 
-You might get in trouble if you try to define method names the same as the
-exported keyword names.
+C<accessor>-like subs with arguments aren't yet supported, but there's
+nothing in the design that says they aren't allowed.  I'm just lazy, and
+I'll add them upon request.
 
-There are certainly more bugs, since this is complex, subtle, scary code.  Bug
-reports/patches welcome.
+You might get in trouble if you try to define method names the same as
+the exported keyword names.
+
+There are certainly more bugs, since this is complex, subtle, scary
+code.  Bug reports/patches welcome.
 
 =head1 SEE ALSO
 
