@@ -18,10 +18,11 @@ our @EXPORT = qw{
     method
     accessor
     extends
+    does
     destroy
 };
 
-our $VERSION = '0.20';
+our $VERSION = '0.21';
 
 my @SCAN;
 our $VTABLE;
@@ -45,7 +46,7 @@ sub _make_new {
         @{"$PACKAGE\::ISA"} = ($base);
 
         *{"$PACKAGE\::DESTROY"} = sub { 
-            for (@{"$package\::REBLESSED"}) {  # bless them back into their original class
+            for (@{"$package\::CCREBLESSED"}) {  # bless them back into their original class
                 bless $_->[0] => $_->[1];
             }
             Symbol::delete_package($package); 
@@ -54,7 +55,7 @@ sub _make_new {
         *{"$PACKAGE\::isa"} = sub {
             my ($self, $class) = @_;
             return 1 if $base->isa($class);
-            for (@{"$package\::SUBISA"}) {
+            for (@{"$package\::CCSUBISA"}) {
                 return 1 if $_->isa($class);
             }
             return;
@@ -66,12 +67,12 @@ sub _make_new {
                 return $code;
             }
             else {
-                for my $pack (@{"$package\::SUBISA"}) {
-                    my $packobj = ${"$package\::SUBOBJ"}{$pack};
+                for my $pack (@{"$package\::CCSUBISA"}) {
+                    my $packobj = ${"$package\::CCSUBOBJ"}{$pack};
                     my $can = "$pack\::can";
                     if (my $code = $pack->can($method)) {
                         return *{"$package\::$method"} = sub { 
-                            @_ = ($packobj, @_[1..$#_]);
+                            splice @_, 0, 1, $packobj;
                             goto &$code;
                         };
                     }
@@ -157,6 +158,7 @@ EOC
     return;
 }
 
+
 sub extends($) {
     my ($var) = @_;
     
@@ -166,10 +168,10 @@ sub extends($) {
 
     my $pack = ref $var;
     bless $var => $PACKAGE;  # Rebless for virtual behavior
-    push @{"$PACKAGE\::REBLESSED"}, [ $var => $pack ];  # bookkeeping for DESTROY
+    push @{"$PACKAGE\::CCREBLESSED"}, [ $var => $pack ];  # bookkeeping for DESTROY
 
-    push @{"$PACKAGE\::SUBISA"}, $pack;
-    ${"$PACKAGE\::SUBOBJ"}{$pack} = $var;
+    push @{"$PACKAGE\::CCSUBISA"}, $pack;
+    ${"$PACKAGE\::CCSUBOBJ"}{$pack} = $var;
 
     return;
 }
@@ -420,21 +422,25 @@ your objects based on a dynamic template:
         }
     }
 
-That avoids a run-time check on each of the method calls, and makes things a
-little easier to read.  There's all kinds of other fun stuff you can do.
+That avoids a run-time check on each of the method calls, and makes
+things a little easier to read.  There's all kinds of other fun stuff
+you can do.
 
 =head2 Technical Notes / Bugs / Caveats / Etc.
 
-The benchmarks say that Class::Closure has 50% less overhead than the
-traditional object model.  Yes, that's right, Class::Closure, in
-addition to being super-cool, encapsulated, and easy to read, is
-I<faster> than what you'd get if you did it the traditional way!  It
-surprised me too.  For this you trade object construction time and some
-memory.
+Included in the distribution is a benchmark.pl script which will test
+various aspects of Class::Closure objects against objects created with
+the traditional object model.  In general, Class::Closure is quite a bit
+faster for plain method calls (the extra hash lookup for each attribute
+is more overhead than you'd think), but is slower for inherited methods
+    and I<much> slower for object creation.  So it's not good to use
+Class::Closure for small, intermediate objects if you're worried about
+speed.  Fortunately, Perl programs tend not to use these sorts of
+objects often.
 
 C<accessor>-like subs with arguments aren't yet supported, but there's
 nothing in the design that says they aren't allowed.  I'm just lazy, and
-I'll add them upon request.
+I'll happily add them upon request.
 
 You might get in trouble if you try to define method names the same as
 the exported keyword names.
