@@ -1,8 +1,12 @@
-.cvsignore
-Closure.pm
-MANIFEST			This list of files
+Changes
+LICENSE
+MANIFEST
+META.json
+META.yml
 Makefile.PL
 README
 TODO
 benchmark.pl
-test.pl
+dist.ini
+lib/Class/Closure.pm
+t/basic.t

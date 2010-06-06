@@ -7,26 +7,27 @@ package Foo;
 BEGIN { Test::More::use_ok('Class::Closure') }
 
 sub CLASS {
-    destroy { $foodestr++ };
-    
-    my $a = 1;              # Private
-    has(my $b) = 2;         # Read Only
-    public(my $c) = 3;      # Er, yep, public
-                            # Magic accessor.
-    accessor 'd', set => sub { $b = $_[1] },
-                  get => sub { $c };
-    method e => sub { 2*$_[1] };
-    method f => sub { 2*$_[0]->g };
+	destroy { $foodestr++ };
+
+	my $a = 1;              # Private
+	has(my $b) = 2;         # Read Only
+	public(my $c) = 3;      # Er, yep, public
+	accessor d => (         # Magic accessor.
+		set => sub { $b = $_[1] },
+		get => sub { $c },
+	);
+	method e => sub { 2*$_[1] };
+	method f => sub { 2*$_[0]->g };
 };
 
 package Baz;
 
 sub new {
-    bless { x => 42 } => ref $_[0] || $_[0];
+	bless { x => 42 } => ref $_[0] || $_[0];
 }
 
 sub g : lvalue {
-    $_[0]->{x};
+	$_[0]->{x};
 }
 
 package Bar;
@@ -34,15 +35,15 @@ package Bar;
 BEGIN { Test::More::use_ok('Class::Closure') }
 
 sub CLASS {
-    destroy { $bardestr++ };
-    
-    extends 'Foo';
-    extends 'Baz';
+	destroy { $bardestr++ };
 
-    has my $b;
+	extends 'Foo';
+	extends 'Baz';
 
-    method BUILD => sub { $b = 13; };
-    method FALLBACK => sub { 69 };
+	has my $b;
+
+	method BUILD => sub { $b = 13; };
+	method FALLBACK => sub { 69 };
 }
 
 package main;

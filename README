@@ -1,23 +1,13 @@
-Class/Closure version 0.20
-==========================
 
-INSTALLATION
 
-To install this module type the following:
+This archive contains the distribution Class-Closure,
+version 0.30:
 
-   perl Makefile.PL
-   make
-   make test
-   make install
+  Encapsulated, declarative class style
 
-DEPENDENCIES
+This software is copyright (c) 2010 by Luke Palmer.
 
-This module has no dependencies that are not in the standard distribution.
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
 
-COPYRIGHT AND LICENCE
-
-Copyright (C) 2004 Luke Palmer
-
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself. 
 

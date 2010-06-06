@@ -1,0 +1,39 @@
+{
+   "abstract" : "Encapsulated, declarative class style",
+   "author" : [
+      "Aristotle Pagaltzis <pagaltzis@gmx.de>",
+      "Luke Palmer"
+   ],
+   "dynamic_config" : 0,
+   "generated_by" : "Dist::Zilla version 4.101550",
+   "license" : "perl_5",
+   "meta-spec" : {
+      "url" : "http://github.com/dagolden/cpan-meta/",
+      "version" : 2
+   },
+   "name" : "Class-Closure",
+   "prereqs" : {
+      "configure" : {
+         "requires" : {
+            "ExtUtils::MakeMaker" : "6.31"
+         }
+      },
+      "runtime" : {
+         "requires" : {
+            "Devel::Caller" : "0",
+            "PadWalker" : "0"
+         }
+      }
+   },
+   "release_status" : "stable",
+   "resources" : {
+      "bugtracker" : {
+         "web" : "http://github.com/ap/Class-Closure/issues"
+      },
+      "homepage" : "http://github.com/ap/Class-Closure",
+      "repository" : {
+         "url" : "git://github.com/ap/Class-Closure"
+      }
+   },
+   "version" : "0.30"
+}
