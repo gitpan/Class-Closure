@@ -1,23 +1,12 @@
-=head1 Revision history for Class-Closure
+Revision history for Class-Closure
 
-=head2 0.30 (2010-06-06)
+0.301 Sun  4 Jan 2015
+	- Switched lvalue accessors to using Sentinel for better performance
+	- Sanitised code as far as possible
 
-=over 4
+0.30 Sun  6 Jun 2010
+	- Do code generation at C<import> time, remove use of C<CHECK> block
+	  Fixes #58046 (Uses CHECK block)
 
-=item * Do code generation at C<import> time, remove use of C<CHECK> block
-
-Fixes #58046 (Uses CHECK block)
-
-=item * New maintainer: ARISTOTLE
-
-=back
-
-=head2 0.22 (2010-06-06)
-
-=over 4
-
-=item * Switch to Dist::Zilla
-
-=back
-
-=for vim vi:tw=72:ft=pod
+0.22 Sun  6 Jun 2010
+	- Switch to Dist::Zilla

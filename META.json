@@ -5,23 +5,41 @@
       "Luke Palmer"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Dist::Zilla version 4.101550",
-   "license" : "perl_5",
+   "generated_by" : "Dist::Zilla version 5.029, CPAN::Meta::Converter version 2.143240",
+   "license" : [
+      "perl_5"
+   ],
    "meta-spec" : {
-      "url" : "http://github.com/dagolden/cpan-meta/",
-      "version" : 2
+      "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
+      "version" : "2"
    },
    "name" : "Class-Closure",
    "prereqs" : {
       "configure" : {
          "requires" : {
-            "ExtUtils::MakeMaker" : "6.31"
+            "ExtUtils::MakeMaker" : "0"
          }
       },
       "runtime" : {
          "requires" : {
+            "Carp" : "0",
             "Devel::Caller" : "0",
-            "PadWalker" : "0"
+            "Exporter" : "0",
+            "PadWalker" : "0",
+            "Sentinel" : "0",
+            "Symbol" : "0",
+            "perl" : "5.006",
+            "strict" : "0",
+            "warnings" : "0"
+         }
+      },
+      "test" : {
+         "requires" : {
+            "Baz" : "0",
+            "File::Find" : "0",
+            "File::Temp" : "0",
+            "Foo" : "0",
+            "Test::More" : "0.88"
          }
       }
    },
@@ -32,8 +50,10 @@
       },
       "homepage" : "http://github.com/ap/Class-Closure",
       "repository" : {
+         "type" : "git",
          "url" : "git://github.com/ap/Class-Closure"
       }
    },
-   "version" : "0.30"
+   "version" : "0.301"
 }
+

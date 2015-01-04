@@ -1,22 +1,17 @@
 package Class::Closure;
-BEGIN {
-  $Class::Closure::VERSION = '0.30';
-}
-
+$Class::Closure::VERSION = '0.301';
 # ABSTRACT: Encapsulated, declarative class style
 
 use 5.006;
-no warnings;
+use warnings;
+use strict;
 
-use Exporter;
-use Carp;
+use Exporter ();
+use Carp ();
 use Symbol ();
-use PadWalker ();
-use Devel::Caller ();
 
 our @ISA = qw(Exporter);
 
-# Yeah, I export a bunch by default. So what? Wanna fight about it?
 our @EXPORT = qw(
 	has
 	public
@@ -27,81 +22,99 @@ our @EXPORT = qw(
 	destroy
 );
 
-our $VTABLE;
 our $PACKAGE;
+our $EXTENDS;
 
-sub import {
-	my ($class) = @_;
-	my $package = caller;
-	*{"$package\::new"} = _make_new(\&{"$package\::CLASS"});
-	goto &Exporter::import;
+sub import { _make_new( scalar caller ); goto &Exporter::import }
+
+sub _install ($$) {
+	my ( $name, $thing ) = @_;
+	no strict 'refs';
+	*{ "$PACKAGE\::$name" } = $thing;
 }
 
 sub _make_new {
-	my ($code) = @_;
-	sub {
+	my ( $pkg ) = @_;
+
+	$PACKAGE = $pkg;
+	_install new => sub {
 		my $base = ref $_[0] || $_[0];
-		local $PACKAGE = _make_package();
-		local $VTABLE = bless { } => $PACKAGE;
-		my $package = $PACKAGE;
+		local $PACKAGE = my $package = _make_package();
 
-		@{"$PACKAGE\::ISA"} = ($base);
+		_install ISA => [ $base ];
 
-		*{"$PACKAGE\::DESTROY"} = sub {
-			for (@{"$package\::CCREBLESSED"}) {  # bless them back into their original class
-				bless $_->[0] => $_->[1];
-			}
-			Symbol::delete_package($package);
+		my ( @reblessed, @subisa, %subobj );
+
+		_install DESTROY => sub {
+			bless $_->[0], $_->[1] for @reblessed; # bless them back into their original class
+			Symbol::delete_package( $package );
 		};
 
-		*{"$PACKAGE\::isa"} = sub {
-			my ($self, $class) = @_;
-			return 1 if $base->isa($class);
-			for (@{"$package\::CCSUBISA"}) {
-				return 1 if $_->isa($class);
-			}
+		_install isa => sub {
+			my ( $self, $class ) = @_;
+			do { return 1 if $base->isa( $class ) };
+			do { return 1 if $_->isa( $class ) } for @subisa;
 			return;
 		};
 
-		*{"$PACKAGE\::can"} = sub {
-			my ($self, $method) = @_;
-			if (my $code = *{"$package\::$method"}{CODE}) {
-				return $code;
-			}
-			else {
-				for my $pack (@{"$package\::CCSUBISA"}) {
-					my $packobj = ${"$package\::CCSUBOBJ"}{$pack};
-					my $can = "$pack\::can";
-					if (my $code = $pack->can($method)) {
-						return *{"$package\::$method"} = sub {
-							splice @_, 0, 1, $packobj;
-							goto &$code;
-						};
-					}
-				}
-			}
+		local $EXTENDS = sub {
+			my ( $var ) = @_;
+
+			$var = $var->new if not ref $var;
+
+			my $pkg = ref $var;
+			bless $var, $PACKAGE;  # Rebless for virtual behavior
+
+			push @reblessed, [ $var, $pkg ];  # bookkeeping for DESTROY
+
+			push @subisa, $pkg;
+			$subobj{ $pkg } = $var;
+
 			return;
 		};
 
-		*{"$PACKAGE\::AUTOLOAD"} = sub {
-			$AUTOLOAD =~ s/.*:://;
-			if (my $code = $_[0]->can($AUTOLOAD)) {
+		_install can => sub {
+			my ( $self, $method ) = @_;
+
+			my $code = do { no strict 'refs'; *{ "$package\::$method" }{'CODE'} };
+			return $code if $code;
+
+			for my $pkg ( @subisa ) {
+				my $obj = $subobj{ $pkg };
+				$code = $pkg->can( $method ) or next;
+				my $delegate = sub {
+					splice @_, 0, 1, $obj;
+					goto &$code;
+				};
+				{ no strict 'refs'; *{ "$package\::$method" } = $delegate };
+				return $delegate;
+			}
+
+			return;
+		};
+
+		_install AUTOLOAD => sub {
+			our $AUTOLOAD =~ s/.*:://;
+			if ( my $code = $_[0]->can( $AUTOLOAD ) ) {
 				goto &$code;
 			}
-			elsif (my $fallback = $_[0]->can('FALLBACK')) {
-				local *{"$base\::AUTOLOAD"} = \$AUTOLOAD;
+			elsif ( my $fallback = $_[0]->can( 'FALLBACK' ) ) {
+				no strict 'refs';
+				local *{ "$base\::AUTOLOAD" } = \$AUTOLOAD;
 				goto &$fallback;
 			}
 			else {
-				croak "Method $AUTOLOAD not found in class $base";
+				Carp::croak "Method $AUTOLOAD not found in class $base";
 			}
 		};
 
-		$code->(@_);
+		$pkg->can( 'CLASS' )->( @_ );
 
-		$VTABLE->can('BUILD') && $VTABLE->BUILD(@_[1..$#_]);
+		my $self = bless {}, $PACKAGE;
 
-		$VTABLE;
+		$self->BUILD( @_[ 1 .. $#_ ] ) if $self->can( 'BUILD' );
+
+		$self;
 	};
 }
 
@@ -113,111 +126,66 @@ sub _make_package {
 }
 
 sub _find_name {
-	my ($var, $code) = @_;
-	my %names = reverse %{PadWalker::peek_sub($code)};
-	my $name = $names{$var} || croak "Couldn't find lexical name for $var";
+	my ( $var, $code ) = @_;
+	require PadWalker;
+	my %names = reverse %{ PadWalker::peek_sub( $code ) };
+	my $name = $names{ $var } || Carp::croak "Couldn't find lexical name for $var";
 	$name =~ s/^[\$\@%]//;
 	$name;
 }
 
-sub has(\$) : lvalue {
-	my ($var) = @_;
+sub has (\$) : lvalue {
+	my ( $var ) = @_;
 
+	require Devel::Caller;
 	my $name = _find_name $var, Devel::Caller::caller_cv(1);
 
-	*{"$PACKAGE\::$name"} = sub ($) { $$var };
+	_install $name, sub { $$var };
 	$$var;
 }
 
-sub public(\$) : lvalue {
-	my ($var) = @_;
+sub public (\$) : lvalue {
+	my ( $var ) = @_;
 
+	require Devel::Caller;
 	my $name = _find_name $var, Devel::Caller::caller_cv(1);
-	eval << "EOC";
-		package $PACKAGE;
-		sub $name (\$) : lvalue { \$\$var }
-EOC
+
+	_install $name, sub : lvalue { $$var };
 	$$var;
 }
 
-sub method($&) {
-	my ($name, $code) = @_;
-	*{"$PACKAGE\::$name"} = $code;
+sub method ($&) {
+	&_install;
 	return;
 }
 
-sub accessor($@) {
-	my ($name, %pairs) = @_;
-	croak "accessor needs 'get' and 'set' attributes" unless $pairs{get} && $pairs{set};
-	eval << "EOC";
-		package $PACKAGE;
-		sub $name (\$) : lvalue {
-			tie my \$del => Class::Closure::LValueDelegate,
-					\$_[0], \$pairs{get}, \$pairs{set};
-			\$del;
-		}
-EOC
+sub accessor ($@) {
+	my ( $name, %arg ) = @_;
+	Carp::croak "accessor needs 'get' and 'set' attributes" unless $arg{'get'} && $arg{'set'};
+	require Sentinel;
+	_install $name, sub : lvalue {
+		my $self = shift;
+		Sentinel::sentinel(
+			get => sub { $arg{'get'}->( $self ) },
+			set => sub { $arg{'set'}->( $self, @_ ) },
+		);
+	};
 	return;
 }
 
+sub extends($) { &$EXTENDS }
 
-sub extends($) {
-	my ($var) = @_;
-
-	unless (ref $var) {
-		$var = $var->new;
-	}
-
-	my $pack = ref $var;
-	bless $var => $PACKAGE;  # Rebless for virtual behavior
-	push @{"$PACKAGE\::CCREBLESSED"}, [ $var => $pack ];  # bookkeeping for DESTROY
-
-	push @{"$PACKAGE\::CCSUBISA"}, $pack;
-	${"$PACKAGE\::CCSUBOBJ"}{$pack} = $var;
-
-	return;
-}
-
-sub destroy(&) {
-	${"$PACKAGE\::DESTROY"} = Class::Closure::DestroyDelegate->new($_[0]);
-}
+sub destroy(&) { _install DESTROY => \Class::Closure::DestroyDelegate->new( $_[0] ) }
 
 package Class::Closure::DestroyDelegate;
-BEGIN {
-  $Class::Closure::DestroyDelegate::VERSION = '0.30';
-}
-
-sub new {
-	my ($class, $code) = @_;
-	bless $code => ref $class || $class;
-}
-
-sub DESTROY {
-	goto &{$_[0]};
-}
-
-package Class::Closure::LValueDelegate;
-BEGIN {
-  $Class::Closure::LValueDelegate::VERSION = '0.30';
-}
-
-sub TIESCALAR {
-	my ($class, $ref, $get, $set) = @_;
-	bless { ref => $ref, get => $get, set => $set } => $class;
-}
-
-sub FETCH {
-	$_[0]->{get}->($ref);
-}
-
-sub STORE {
-	$_[0]->{set}->($ref, $_[1]);
-}
+$Class::Closure::DestroyDelegate::VERSION = '0.301';
+sub new { bless $_[1] }
+sub DESTROY { goto &{$_[0]} }
 
 1;
 
-
 __END__
+
 =pod
 
 =head1 NAME
@@ -226,7 +194,7 @@ Class::Closure - Encapsulated, declarative class style
 
 =head1 VERSION
 
-version 0.30
+version 0.301
 
 =head1 SYNOPSIS
 
@@ -464,15 +432,25 @@ L<Class::Struct>, L<Class::Classless>
 
 =head1 AUTHORS
 
-  Aristotle Pagaltzis <pagaltzis@gmx.de>
-  Luke Palmer
+=over 4
+
+=item *
+
+Aristotle Pagaltzis <pagaltzis@gmx.de>
+
+=item *
+
+Luke Palmer
+
+=back
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2010 by Luke Palmer.
+This documentation is copyright (c) 2004 by Luke Palmer.
+
+This software is copyright (c) 2015 by Aristotle Pagaltzis.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
 
 =cut
-
